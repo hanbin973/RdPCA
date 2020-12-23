@@ -5,7 +5,8 @@ Read-depth aware principal component analysis (RdPCA) is a extension of principa
 ## Basic usage
 `fit_pca_linear` function in `model.py` returns the RdPCA coordinates.
 ```
-fit_pca_linear(expr_mat, ndim_lat,
+fit_pca_linear(expr_mat, 
+		ndim_lat,
 		cc_mat=None,
 		size_factor=None,
 		batch_mat=None,
@@ -14,6 +15,7 @@ fit_pca_linear(expr_mat, ndim_lat,
 		)
 ```
 * `expr_mat`: `n_sample` x `n_gene` expression matrix
+* `ndim_lat`: number of principal components
 * `cc_mat`: `n_sample` x 2 cell cycle phase score matrix (e.g. Seurat cell cycle score)
 * `size_factor`: `n_sample` vector of offset variables (e.g. scran size factors)
 * `model`: currently only `poisson` is supported
