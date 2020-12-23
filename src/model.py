@@ -51,7 +51,7 @@ class causal_linear_pca(nn.Module):
 	
 	# custom backward someday def backward():
 
-def fit_pca_linear_test(expr_mat, ndim_lat,
+def fit_pca_linear(expr_mat, ndim_lat,
 		cc_mat=None,
 		size_factor=None,
 		batch_mat=None,
