@@ -104,4 +104,7 @@ def fit_pca_linear(expr_mat, ndim_lat,
 			break
 		loss.backward()
 
-	return model
+	F, D, V = torch.svd(model.expr_loss.logmean_layer.lat_coef)
+	U = (model.lat_coord @ F @ torch.diag(D))
+
+	return U
