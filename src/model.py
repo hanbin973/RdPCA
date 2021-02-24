@@ -103,8 +103,14 @@ def fit_pca_linear(expr_mat, ndim_lat,
 		if torch.abs((loss - loss_old)/loss_old) < 1e-6:
 			break
 		loss.backward()
-
-	F, D, V = torch.svd(model.expr_loss.logmean_layer.lat_coef)
+	
+	lat_coef = model.expr_loss.logmean_layer.lat_coef
+	F, D, V = torch.svd(torch.cat((lat_coef,
+					model.size_factor_loss.logsf_mean_layer.lat_coef * ndim_lat,
+					model.cell_cycle_loss.cc_mean_layer.lat_coef * ndim_lat/2),
+				dim=1
+				)
+			)
 	U = (model.lat_coord @ F @ torch.diag(D))
 
 	return U
