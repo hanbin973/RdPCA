@@ -94,7 +94,91 @@ def fit_pca_linear(expr_mat, ndim_lat,
 	loss = -model(expr_mat, cc_mat, size_factor, batch_mat)
 	loss.backward()
 	for itr in range(2000):
-		if itr%40 == 0:
+		if itr%50 == 0:
+			print('step %s: loss %.2f' % (itr, loss))
+		optim_all.step()
+		optim_all.zero_grad()
+		loss_old = loss
+		loss = -model(expr_mat, cc_mat, size_factor, batch_mat)
+		if torch.abs((loss - loss_old)/loss_old) < 1e-6:
+			break
+		loss.backward()
+
+	"""
+	experimental lbfgs
+	optim_lbfgs = optim.LBFGS(model.parameters(), line_search_fn='strong_wolfe', history_size=20)
+	def closure():
+		optim_lbfgs.zero_grad()
+		loss = -model(expr_mat, cc_mat, size_factor, batch_mat)
+		loss.backward()
+		return loss
+	for i in range(5):
+		optim_lbfgs.step(closure)
+
+	"""
+	
+	F, D, V = torch.svd(torch.cat((model.cell_cycle_loss.cc_mean_layer.lat_coef * ndim_lat * 0.5,
+					model.size_factor_loss.logsf_mean_layer.lat_coef * ndim_lat,
+					model.expr_loss.logmean_layer.lat_coef),
+				dim=1
+				)
+			)
+	U = (model.lat_coord @ F @ torch.diag(D))
+	U = U[:,torch.argsort((U * U).mean(axis=0).sqrt(),descending=True)]  
+
+	return U
+
+def fit_pca_linear_batch_first(expr_mat, ndim_lat,
+		cc_mat=None,
+		size_factor=None,
+		batch_mat=None,
+		model='poisson',
+		device=torch.device('cpu')
+		):
+
+	# n_sample
+	opt = 1
+	n_sample = expr_mat.shape[0]
+	
+	# supply zero to unspecified inputs
+	if cc_mat == None:
+		cc_mat = torch.zeros(n_sample, 2, device=device)
+	if size_factor == None:
+		size_factor = torch.ones(n_sample, device=device)
+	if batch_mat == None:
+		batch_mat = torch.zeros(n_sample, 1, device=device)
+
+	# invoke linear pca
+	model = causal_linear_pca(expr_mat, ndim_lat, cc_mat, size_factor, batch_mat, model, opt)
+
+	# load data to device
+	model.to(device)
+	expr_mat = expr_mat.to(device)
+	cc_mat = cc_mat.to(device)
+	size_factor = size_factor.to(device)
+	batch_mat = batch_mat.to(device)
+
+	# init batch params
+	batch_mat_agg = torch.ones((n_sample,1), device=device)
+	A = batch_mat_agg.T @ batch_mat_agg
+	B = batch_mat_agg.T @ (expr_mat / size_factor[:,None])
+	alpha, _ = torch.solve(B, A)
+	model.expr_loss.logmean_layer.const.data = alpha.log()
+	model.size_factor_loss.logsf_mean_layer.const.data[0,0] = size_factor.log().mean()
+
+	# fit batch parameters first
+	batch_params = [model.cell_cycle_loss.cc_mean_layer.batch_coef,
+			model.size_factor_loss.logsf_mean_layer.batch_coef,
+			model.expr_loss.logmean_layer.batch_coef,
+			model.expr_loss.logmean_layer.const,
+			model.size_factor_loss.logsf_mean_layer.const,
+			model.cell_cycle_loss.cc_mean_layer.const]
+	optim_all = optim.Adam(batch_params, lr=0.05)
+	optim_all.zero_grad()
+	loss = -model(expr_mat, cc_mat, size_factor, batch_mat)
+	loss.backward()
+	for itr in range(2000):
+		if itr%50 == 0:
 			print('step %s: loss %.2f' % (itr, loss))
 		optim_all.step()
 		optim_all.zero_grad()
@@ -104,13 +188,52 @@ def fit_pca_linear(expr_mat, ndim_lat,
 			break
 		loss.backward()
 	
-	lat_coef = model.expr_loss.logmean_layer.lat_coef
-	F, D, V = torch.svd(torch.cat((lat_coef,
+	# fit remaining parameters
+	non_batch_params = [model.lat_coord,
+			model.expr_loss.logmean_layer.lat_coef,
+			model.expr_loss.logmean_layer.cc_coef,
+			model.expr_loss.logmean_layer.const,
+			model.size_factor_loss.logsf_mean_layer.lat_coef,
+			model.size_factor_loss.logsf_mean_layer.cc_coef,
+			model.size_factor_loss.logsf_mean_layer.const,
+			model.cell_cycle_loss.cc_mean_layer.lat_coef,
+			model.cell_cycle_loss.cc_mean_layer.const
+			]
+	optim_all = optim.Adam(non_batch_params, lr=0.05)
+	optim_all.zero_grad()
+	loss = -model(expr_mat, cc_mat, size_factor, batch_mat)
+	loss.backward()
+	for itr in range(2000):
+		if itr%50 == 0:
+			print('step %s: loss %.2f' % (itr, loss))
+		optim_all.step()
+		optim_all.zero_grad()
+		loss_old = loss
+		loss = -model(expr_mat, cc_mat, size_factor, batch_mat)
+		if torch.abs((loss - loss_old)/loss_old) < 1e-6:
+			break
+		loss.backward()
+
+	"""
+	experimental lbfgs
+	optim_lbfgs = optim.LBFGS(model.parameters(), line_search_fn='strong_wolfe', history_size=20)
+	def closure():
+		optim_lbfgs.zero_grad()
+		loss = -model(expr_mat, cc_mat, size_factor, batch_mat)
+		loss.backward()
+		return loss
+	for i in range(5):
+		optim_lbfgs.step(closure)
+
+	"""
+	
+	F, D, V = torch.svd(torch.cat((model.cell_cycle_loss.cc_mean_layer.lat_coef * ndim_lat * 0.5,
 					model.size_factor_loss.logsf_mean_layer.lat_coef * ndim_lat,
-					model.cell_cycle_loss.cc_mean_layer.lat_coef * ndim_lat/2),
+					model.expr_loss.logmean_layer.lat_coef),
 				dim=1
 				)
 			)
 	U = (model.lat_coord @ F @ torch.diag(D))
+	U = U[:,torch.argsort((U * U).mean(axis=0).sqrt(),descending=True)]  
 
 	return U
